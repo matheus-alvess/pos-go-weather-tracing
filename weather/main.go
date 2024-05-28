@@ -4,21 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/zipkin"
+	"go.opentelemetry.io/otel/sdk/resource"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"strings"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/sdk/resource"
+	"net/url"
+	"os"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/sdk/trace"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+
 	"go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
 const (
-	ZIPKIN_HOST          = "http://localhost:9411/api/v2/spans"
 	VIA_CEP_API_URL      = "https://viacep.com.br/ws/%s/json/"
 	WEATHER_EXTERNAL_API = "http://api.weatherapi.com/v1/current.json?key=%s&q=%s"
 	WEATHER_API_KEY      = "0221a1d62222490882322259242305"
@@ -42,39 +44,42 @@ type WeatherAPIResponse struct {
 }
 
 func main() {
-	shutdown, err := initTracer()
-	if err != nil {
-		log.Fatalf("failed to initialize tracer: %v", err)
-	}
-	defer shutdown(context.Background())
+	initTracer()
 
 	http.HandleFunc("/getWeather", handleGetWeatherRequest)
 	fmt.Println("Running app at Port :9090")
 	log.Fatal(http.ListenAndServe(":9090", nil))
 }
 
-func initTracer() (func(context.Context) error, error) {
+func initTracer() {
 	ctx := context.Background()
+	client := otlptracehttp.NewClient(otlptracehttp.WithEndpoint("otel-collector:4317"), otlptracehttp.WithInsecure())
+	exporter, err := otlptrace.New(ctx, client)
 
-	exporter, err := otlptracehttp.New(
-		ctx,
-		otlptracehttp.WithEndpoint(ZIPKIN_HOST),
-		otlptracehttp.WithInsecure(),
-	)
 	if err != nil {
-		return nil, err
+		log.Fatalf("failed to create exporter: %v", err)
 	}
 
-	tp := trace.NewTracerProvider(
-		trace.WithBatcher(exporter),
-		trace.WithResource(resource.NewWithAttributes(
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if endpoint == "" {
+		log.Fatal("OTEL_EXPORTER_OTLP_ENDPOINT is not set")
+	}
+	fmt.Println("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint)
+
+	zipkinExporter, err := zipkin.New(endpoint)
+	if err != nil {
+		log.Fatalf("failed to create zipkin exporter: %v", err)
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithBatcher(zipkinExporter),
+		sdktrace.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceNameKey.String("weather-app"),
 		)),
 	)
-
 	otel.SetTracerProvider(tp)
-	return tp.Shutdown, nil
 }
 
 func handleGetWeatherRequest(w http.ResponseWriter, r *http.Request) {
@@ -107,6 +112,7 @@ func handleGetWeatherRequest(w http.ResponseWriter, r *http.Request) {
 
 	weather, err := getWeather(ctx, city)
 	if err != nil {
+		fmt.Println("Failed to get weather data", err)
 		http.Error(w, "Failed to get weather data", http.StatusInternalServerError)
 		return
 	}
@@ -171,7 +177,8 @@ func getWeather(ctx context.Context, city string) (*WeatherAPIResponse, error) {
 	_, span := tr.Start(ctx, "getWeather")
 	defer span.End()
 
-	resp, err := http.Get(fmt.Sprintf(WEATHER_EXTERNAL_API, WEATHER_API_KEY, strings.ReplaceAll(city, " ", "%20")))
+	encodedCity := url.QueryEscape(city)
+	resp, err := http.Get(fmt.Sprintf(WEATHER_EXTERNAL_API, WEATHER_API_KEY, encodedCity))
 	if err != nil {
 		return nil, err
 	}

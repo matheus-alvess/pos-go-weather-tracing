@@ -1,12 +1,5 @@
 services:
-  zipkin:
-    image: openzipkin/zipkin
-    ports:
-      - "9411:9411"
-    networks:
-      - my-network
-
-  zip_code-app:
+  zip_code_app:
     build:
       context: .
       dockerfile: zip_code/Dockerfile
@@ -15,7 +8,9 @@ services:
     networks:
       - my-network
     depends_on:
-      - zipkin
+      - otel-collector
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://zipkin:9411/api/v2/spans
 
   weather-app:
     build:
@@ -26,7 +21,27 @@ services:
     networks:
       - my-network
     depends_on:
-      - zipkin
+      - otel-collector
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://zipkin:9411/api/v2/spans
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib
+    command: [ "--config=/etc/otel/otel-collector-config.yaml" ]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel/otel-collector-config.yaml
+    ports:
+      - "4317:4317"
+      - "55679:55679"
+    networks:
+      - my-network
+
+  zipkin:
+    image: openzipkin/zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - my-network
 
 networks:
   my-network:

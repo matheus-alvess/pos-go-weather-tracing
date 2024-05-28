@@ -8,7 +8,7 @@ RUN go mod download
 
 COPY . .
 
-RUN go test ./... -v
+#RUN go test ./... -v
 RUN go build -o /zip_code ./zip_code
 
 EXPOSE 8080

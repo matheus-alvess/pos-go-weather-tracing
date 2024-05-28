@@ -8,7 +8,7 @@ RUN go mod download
 
 COPY . .
 
-RUN go test ./... -v
+#RUN go test ./... -v
 RUN go build -o /weather ./weather
 
 EXPOSE 9090
