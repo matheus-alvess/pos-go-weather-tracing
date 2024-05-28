@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/zipkin"
@@ -146,7 +147,8 @@ func getCityFromCEP(ctx context.Context, cep string) (string, error) {
 	_, span := tr.Start(ctx, "getCityFromCEP")
 	defer span.End()
 
-	resp, err := http.Get(fmt.Sprintf(VIA_CEP_API_URL, cep))
+	client := http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
+	resp, err := client.Get(fmt.Sprintf(VIA_CEP_API_URL, cep))
 	if err != nil {
 		return "", err
 	}
@@ -178,7 +180,8 @@ func getWeather(ctx context.Context, city string) (*WeatherAPIResponse, error) {
 	defer span.End()
 
 	encodedCity := url.QueryEscape(city)
-	resp, err := http.Get(fmt.Sprintf(WEATHER_EXTERNAL_API, WEATHER_API_KEY, encodedCity))
+	client := http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
+	resp, err := client.Get(fmt.Sprintf(WEATHER_EXTERNAL_API, WEATHER_API_KEY, encodedCity))
 	if err != nil {
 		return nil, err
 	}

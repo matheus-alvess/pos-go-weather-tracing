@@ -124,7 +124,7 @@ func sendToWeatherApp(ctx context.Context, requestData CEPRequest) (*http.Respon
 	if err != nil {
 		return nil, err
 	}
-
+	
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, WEATHER_API_URL, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return nil, err
