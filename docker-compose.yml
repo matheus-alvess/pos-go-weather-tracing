@@ -1,0 +1,33 @@
+services:
+  zipkin:
+    image: openzipkin/zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - my-network
+
+  zip_code-app:
+    build:
+      context: .
+      dockerfile: zip_code/Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - my-network
+    depends_on:
+      - zipkin
+
+  weather-app:
+    build:
+      context: .
+      dockerfile: weather/Dockerfile
+    ports:
+      - "9090:9090"
+    networks:
+      - my-network
+    depends_on:
+      - zipkin
+
+networks:
+  my-network:
+    driver: bridge
